@@ -102,8 +102,10 @@ verschobenes `v1` darf nie einen roten CI-Lauf verursachen.
    für die Bundle-ID laufen lassen.
 6. Repo-Secrets setzen: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`,
    `MATCH_PASSWORD`, `MATCH_GIT_TOKEN`.
-7. Branch Protection auf `main`: CI muss grün sein.
+7. Branch Protection auf `main` (nur bei public Repos kostenlos).
 8. Repo-Name in `scripts/sync.sh` in `REPOS` eintragen.
+
+Die Signing- und Secret-Schritte stehen ausführlich in [docs/setup.md](docs/setup.md).
 
 Für neue Apps gibt es dafür `bickelmeister/ios-app-template` — dort ist das alles
 schon fertig.
@@ -116,7 +118,7 @@ schon fertig.
 | `ASC_ISSUER_ID` | ebenda, Issuer ID (für alle Apps gleich) |
 | `ASC_KEY_P8` | `base64 -i AuthKey_XXXX.p8` |
 | `MATCH_PASSWORD` | Passphrase, mit der `ios-certificates` verschlüsselt ist |
-| `MATCH_GIT_TOKEN` | PAT mit Lesezugriff auf `bickelmeister/ios-certificates` |
+| `MATCH_GIT_TOKEN` | base64 von `bickelmeister:<PAT>` — nicht der rohe Token |
 
 Zertifikate und Profile liegen in `bickelmeister/ios-certificates` (private),
 verwaltet mit `fastlane match`. Kein Zertifikat wird je in ein App-Repo gelegt.
