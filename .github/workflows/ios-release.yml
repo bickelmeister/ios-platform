@@ -142,6 +142,37 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # Ohne diese Prüfung stirbt fastlane erst im Archive-Job an einem
+      # OpenSSL-Stacktrace ("invalid curve name"), der nicht verrät, dass
+      # schlicht das Secret nicht stimmt.
+      - name: Secrets vorab prüfen
+        env:
+          KEY_B64: ${{ secrets.ASC_KEY_P8 }}
+          GIT_AUTH: ${{ secrets.MATCH_GIT_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$KEY_B64" ]]; then
+            echo "::error::ASC_KEY_P8 ist leer."
+            exit 1
+          fi
+          if ! header=$(printf '%s' "$KEY_B64" | base64 --decode 2>/dev/null | head -1); then
+            echo "::error::ASC_KEY_P8 ist kein gültiges base64. Erzeugen mit: base64 -i AuthKey_XXXX.p8 | gh secret set ASC_KEY_P8"
+            exit 1
+          fi
+          if [[ "$header" != *"BEGIN PRIVATE KEY"* ]]; then
+            echo "::error::ASC_KEY_P8 dekodiert nicht zu einem PEM-Schlüssel (erwartet '-----BEGIN PRIVATE KEY-----')."
+            exit 1
+          fi
+
+          # match erwartet base64 von "benutzer:token", nicht den rohen Token.
+          if ! decoded=$(printf '%s' "$GIT_AUTH" | base64 --decode 2>/dev/null) || [[ "$decoded" != *":"* ]]; then
+            echo "::error::MATCH_GIT_TOKEN muss base64 von 'benutzer:token' sein. Erzeugen mit: echo -n \"user:pat\" | base64"
+            exit 1
+          fi
+
+          echo "ASC_KEY_P8 und MATCH_GIT_TOKEN sehen plausibel aus."
+
       - name: Ruby und fastlane
         uses: ruby/setup-ruby@v1
         with:
