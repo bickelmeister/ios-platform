@@ -5,6 +5,9 @@ excluded:
   - .build
   - "**/*.xcodeproj"
 
+# Die CI läuft mit `--strict`, jede Warnung blockiert also den Merge. Damit das
+# ein brauchbares Signal bleibt und kein Rauschen, sind hier nur Regeln aktiv,
+# deren Verstöße wir auch wirklich beheben wollen.
 disabled_rules:
   # Kurze Namen (r, g, b, h, s, v, e, …) sind in Farb- und Fehlerlogik üblich.
   - identifier_name
@@ -13,6 +16,11 @@ disabled_rules:
   # SwiftUI-Bodies sind naturgemäß lang; die Schachtelungstiefe fangen wir über
   # type_body_length ab, nicht über eine Zeilengrenze pro Funktion.
   - function_body_length
+  # Kämpft gegen SwiftUI: `Button { } label: { }`, `withAnimation { } completion:`
+  # und ähnliche Zwei-Closure-APIs sind Apples eigene Idiomatik.
+  - multiple_closures_with_trailing_closure
+  # TODO(scope)-Marker sind eine bewusst genutzte Notiz im Code, kein Verstoß.
+  - todo
 
 # Bewusst NICHT aktiviert: multiline_arguments und multiline_parameters — sie
 # kämpfen gegen die SwiftUI-Idiomatik (Modifier-Ketten, ViewBuilder-Closures)
@@ -28,9 +36,12 @@ opt_in_rules:
   - unneeded_parentheses_in_closure_argument
   - yoda_condition
 
+# 200 statt der üblichen 120: UI-Texte stehen als deutsche Literale direkt am
+# Aufrufort (`String(localized: "…")`), und ein Umbruch mitten im Satz macht sie
+# schlechter lesbar, nicht besser. Die Grenze markiert "unlesbar", nicht "lang".
 line_length:
-  warning: 140
-  error: 200
+  warning: 200
+  error: 250
   ignores_comments: true
   ignores_urls: true
 
@@ -41,6 +52,23 @@ type_body_length:
 file_length:
   warning: 600
   error: 900
+
+# Ein Tripel wie (name, hex, label) ist eine legitime Kurzform, wo ein eigener
+# Typ mehr Zeremonie als Klarheit wäre. Ab vier Elementen wird es unübersichtlich.
+large_tuple:
+  warning: 3
+  error: 4
+
+# SwiftUI-Formularvalidierung verzweigt naturgemäß breit.
+cyclomatic_complexity:
+  warning: 15
+  error: 20
+
+# Ein dateiweites Abschalten ist nur für line_length erlaubt — für Dateien, die
+# im Wesentlichen aus Fließtext bestehen (Rechtstexte, FAQ).
+blanket_disable_command:
+  allowed_rules:
+    - line_length
 
 # Ein Datei-Header wird nicht erzwungen; erklärende Kommentare stehen bei der
 # Sache, nicht am Dateianfang.
