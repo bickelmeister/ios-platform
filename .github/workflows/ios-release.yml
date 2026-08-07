@@ -1,0 +1,164 @@
+name: iOS Release
+
+# Wiederverwendbarer Release-Lauf: setzt die Version im Xcode-Projekt, committet
+# sie auf main, verschiebt den Release-Tag auf diesen Commit und lädt den Build
+# nach TestFlight. "Submit for Review" bleibt Handarbeit in App Store Connect.
+#
+# Aufruf im App-Repo (.github/workflows/release.yml):
+#
+#   jobs:
+#     release:
+#       uses: bickelmeister/ios-platform/.github/workflows/ios-release.yml@v1
+#       with:
+#         project: diaro-ios.xcodeproj
+#         scheme: diaro-ios
+#       secrets: inherit
+#
+# Annahme: Releases werden aus `main` geschnitten. Der Versions-Commit wird auf
+# den aktuellen `main` gesetzt und der Tag dorthin verschoben.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "Xcode-Projektdatei, z. B. diaro-ios.xcodeproj"
+        type: string
+        required: true
+      scheme:
+        description: "Zu archivierendes Scheme"
+        type: string
+        required: true
+      runs-on:
+        type: string
+        required: false
+        default: macos-26
+    secrets:
+      ASC_KEY_ID:
+        description: "App Store Connect API Key ID"
+        required: true
+      ASC_ISSUER_ID:
+        description: "App Store Connect Issuer ID"
+        required: true
+      ASC_KEY_P8:
+        description: "Base64-kodierter Inhalt der .p8-Datei"
+        required: true
+      MATCH_PASSWORD:
+        description: "Passphrase des match-Repos"
+        required: true
+      MATCH_GIT_TOKEN:
+        description: "PAT mit Lesezugriff auf bickelmeister/ios-certificates"
+        required: true
+
+# Zwei gleichzeitige Releases dürfen sich nicht gegenseitig die Tags verschieben.
+concurrency:
+  group: ios-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Version setzen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      build: ${{ steps.bump.outputs.build }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: SemVer aus dem Release-Tag lesen
+        id: ver
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$tag' ist keine SemVer (erwartet z. B. v1.2.0)."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: MARKETING_VERSION setzen und Build-Nummer erhöhen
+        id: bump
+        env:
+          PBXPROJ: ${{ inputs.project }}/project.pbxproj
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+
+          current_build=$(grep -m1 -oE 'CURRENT_PROJECT_VERSION = [0-9]+;' "$PBXPROJ" | grep -oE '[0-9]+' || true)
+          if [[ -z "$current_build" ]]; then
+            echo "::error::CURRENT_PROJECT_VERSION nicht in $PBXPROJ gefunden."
+            exit 1
+          fi
+          new_build=$((current_build + 1))
+
+          # Debug- und Release-Konfiguration tragen die Werte beide, daher /g.
+          sed -i -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${version};/g" "$PBXPROJ"
+          sed -i -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${new_build};/g" "$PBXPROJ"
+
+          if git diff --quiet -- "$PBXPROJ"; then
+            echo "::error::Keine Änderung an $PBXPROJ — Muster nicht gefunden (Xcode-Formatwechsel?)."
+            exit 1
+          fi
+
+          echo "Version -> ${version}, Build ${current_build} -> ${new_build}"
+          echo "build=${new_build}" >> "$GITHUB_OUTPUT"
+
+      - name: Committen, pushen, Tag verschieben
+        id: commit
+        env:
+          PBXPROJ: ${{ inputs.project }}/project.pbxproj
+        run: |
+          set -euo pipefail
+          tag="${{ steps.ver.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$PBXPROJ"
+          git commit -m "chore(release): set version ${{ steps.ver.outputs.version }} (build ${{ steps.bump.outputs.build }})"
+          git push origin HEAD:main
+          # Den Release-Tag auf den Commit mit der eingebackenen Version zeigen
+          # lassen, damit ein Checkout des Tags archivierbare Quellen ergibt.
+          git tag -f "$tag"
+          git push --force origin "refs/tags/${tag}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  upload:
+    name: Archive & TestFlight
+    needs: version
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+
+      - name: Xcode auswählen
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Ruby und fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Build und Upload nach TestFlight
+        env:
+          SCHEME: ${{ inputs.scheme }}
+          PROJECT: ${{ inputs.project }}
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.ASC_KEY_P8 }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: "true"
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
+          # match legt sonst einen interaktiven Keychain-Prompt an.
+          FASTLANE_SKIP_UPDATE_CHECK: "true"
+          CI: "true"
+        run: bundle exec fastlane release

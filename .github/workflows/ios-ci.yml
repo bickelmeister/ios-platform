@@ -1,0 +1,124 @@
+name: iOS CI
+
+# Wiederverwendbarer CI-Lauf für alle iOS-Apps. Die App-Repos rufen ihn mit
+# ihren eigenen Namen auf; hier steht die Logik genau einmal.
+#
+# Aufruf im App-Repo (.github/workflows/ci.yml):
+#
+#   jobs:
+#     ci:
+#       uses: bickelmeister/ios-platform/.github/workflows/ios-ci.yml@v1
+#       with:
+#         project: diaro-ios.xcodeproj
+#         scheme: diaro-ios
+#         lint-paths: diaro-ios diaro-iosTests
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "Xcode-Projektdatei, z. B. diaro-ios.xcodeproj"
+        type: string
+        required: true
+      scheme:
+        description: "Zu bauendes Scheme"
+        type: string
+        required: true
+      lint-paths:
+        description: "Leerzeichengetrennte Pfade für SwiftLint"
+        type: string
+        required: true
+      runs-on:
+        description: "macOS-Runner-Image für Build und Test"
+        type: string
+        required: false
+        default: macos-26
+      swiftlint-version:
+        description: "SwiftLint-Release-Tag, oder 'latest'"
+        type: string
+        required: false
+        default: latest
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Läuft auf ubuntu statt auf macOS: SwiftLint braucht keinen Simulator und
+      # der Runner ist deutlich günstiger. Ein Fehler hier verhindert den teuren
+      # Build-&-Test-Job.
+      - name: SwiftLint installieren
+        env:
+          VERSION: ${{ inputs.swiftlint-version }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == "latest" ]]; then
+            url="https://github.com/realm/SwiftLint/releases/latest/download/swiftlint_linux_amd64.zip"
+          else
+            url="https://github.com/realm/SwiftLint/releases/download/${VERSION}/swiftlint_linux_amd64.zip"
+          fi
+          curl -sSfL -o swiftlint.zip "$url"
+          unzip -q swiftlint.zip -d swiftlint-bin
+          echo "$PWD/swiftlint-bin" >> "$GITHUB_PATH"
+
+      - name: SwiftLint
+        run: swiftlint lint --strict ${{ inputs.lint-paths }}
+
+  test:
+    name: Build & Test
+    needs: lint
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode auswählen
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: DerivedData cachen
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: derived-data-${{ runner.os }}-${{ hashFiles(format('{0}/project.pbxproj', inputs.project)) }}
+          restore-keys: |
+            derived-data-${{ runner.os }}-
+
+      # Die Gerätelisten der Runner-Images ändern sich; statt einen Namen fest
+      # zu verdrahten, nehmen wir das erste verfügbare iPhone.
+      - name: Simulator bestimmen
+        id: sim
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          print(next(d['udid'] for runtime in sorted(devices) if 'iOS' in runtime
+                     for d in devices[runtime] if d['name'].startswith('iPhone')))")
+          if [[ -z "$udid" ]]; then
+            echo "::error::Kein verfügbarer iPhone-Simulator auf diesem Runner."
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      # CODE_SIGNING_ALLOWED=NO, weil DEVELOPMENT_TEAM im Projekt steht, auf dem
+      # Runner aber kein Zertifikat liegt. Signiert wird nur im Release-Workflow.
+      - name: Tests
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project "${{ inputs.project }}" \
+            -scheme "${{ inputs.scheme }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Testergebnisse bei Fehlschlag hochladen
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.scheme }}
+          path: TestResults.xcresult
+          retention-days: 7

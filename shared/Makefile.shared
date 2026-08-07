@@ -1,0 +1,81 @@
+# Gemeinsame Make-Ziele aller bickelmeister-iOS-Apps.
+#
+# Wird von scripts/sync.sh nach <app-repo>/Makefile kopiert, wobei der Block
+# oberhalb von SYNC:START pro Repo eigen ist. Nicht direkt bearbeiten — Änderungen
+# gehören nach ios-platform/shared/Makefile.shared.
+#
+# Erwartete Variablen aus dem repo-eigenen Kopf:
+#   PROJECT    z. B. diaro-ios.xcodeproj
+#   SCHEME     z. B. diaro-ios
+#   BUNDLE_ID  z. B. studio.startblock.diaro
+#   SOURCES    z. B. diaro-ios diaro-iosTests
+#   SIM        z. B. iPhone 17 Pro
+
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+.DEFAULT_GOAL := help
+
+DESTINATION := platform=iOS Simulator,name=$(SIM)
+DERIVED     := $(CURDIR)/.build/DerivedData
+APP_PATH    := $(DERIVED)/Build/Products/Debug-iphonesimulator/$(SCHEME).app
+
+XCB := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -derivedDataPath $(DERIVED)
+
+# xcbeautify macht die Ausgabe lesbar, ist aber optional — ohne es läuft alles
+# genauso, nur geschwätziger.
+FORMATTER := $(shell command -v xcbeautify >/dev/null 2>&1 && echo "| xcbeautify" || echo "")
+
+.PHONY: help bootstrap lint format build test check verify clean release
+
+help: ## Diese Übersicht
+	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+bootstrap: ## Lokale Werkzeuge installieren (SwiftLint, xcbeautify)
+	@command -v brew >/dev/null || { echo "Homebrew fehlt: https://brew.sh"; exit 1; }
+	brew list swiftlint  >/dev/null 2>&1 || brew install swiftlint
+	brew list xcbeautify >/dev/null 2>&1 || brew install xcbeautify
+
+lint: ## SwiftLint, so streng wie in der CI
+	swiftlint lint --strict $(SOURCES)
+
+format: ## Automatisch behebbare Lint-Verstöße korrigieren
+	swiftlint --fix $(SOURCES)
+	swiftlint lint $(SOURCES)
+
+build: ## Für den Simulator bauen
+	set -o pipefail; $(XCB) -destination '$(DESTINATION)' build $(FORMATTER)
+
+test: ## Unit-Tests im Simulator
+	set -o pipefail; $(XCB) -destination '$(DESTINATION)' test $(FORMATTER)
+
+check: lint build test ## Definition of Done: lint + build + test
+
+verify: build ## Bauen, im Simulator starten, Screenshot ablegen
+	@udid=$$(xcrun simctl list devices available --json \
+		| python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; \
+print(next(x['udid'] for r in sorted(d) if 'iOS' in r for x in d[r] if x['name']=='$(SIM)'))"); \
+	echo "Simulator: $(SIM) ($$udid)"; \
+	xcrun simctl bootstatus "$$udid" -b; \
+	open -a Simulator; \
+	xcrun simctl install "$$udid" "$(APP_PATH)"; \
+	xcrun simctl launch "$$udid" $(BUNDLE_ID); \
+	sleep 3; \
+	mkdir -p .build; \
+	xcrun simctl io "$$udid" screenshot .build/verify.png; \
+	echo "Screenshot: .build/verify.png"
+
+clean: ## DerivedData und Artefakte entfernen
+	rm -rf .build
+
+release: ## Release anstoßen: make release VERSION=1.2.0
+	@test -n "$(VERSION)" || { echo "VERSION fehlt: make release VERSION=1.2.0"; exit 1; }
+	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
+		|| { echo "VERSION muss X.Y.Z sein"; exit 1; }
+	@test -z "$$(git status --porcelain)" || { echo "Arbeitsverzeichnis ist nicht sauber."; exit 1; }
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "Release nur von main."; exit 1; }
+	git fetch origin main
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" \
+		|| { echo "main ist nicht auf dem Stand von origin/main."; exit 1; }
+	gh release create "v$(VERSION)" --target main --title "v$(VERSION)" --generate-notes
+	@echo "Release angelegt. Die CI setzt jetzt die Version und lädt nach TestFlight."

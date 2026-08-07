@@ -1,0 +1,46 @@
+# Gemeinsame SwiftLint-Regeln aller bickelmeister-iOS-Apps.
+# Änderungen gehören nach ios-platform/shared/.swiftlint.yml, nicht ins App-Repo.
+
+excluded:
+  - .build
+  - "**/*.xcodeproj"
+
+disabled_rules:
+  # Kurze Namen (r, g, b, h, s, v, e, …) sind in Farb- und Fehlerlogik üblich.
+  - identifier_name
+  # Der Codebase-Stil initialisiert Optionals konsequent explizit mit `= nil`.
+  - implicit_optional_initialization
+  # SwiftUI-Bodies sind naturgemäß lang; die Schachtelungstiefe fangen wir über
+  # type_body_length ab, nicht über eine Zeilengrenze pro Funktion.
+  - function_body_length
+
+# Bewusst NICHT aktiviert: multiline_arguments und multiline_parameters — sie
+# kämpfen gegen die SwiftUI-Idiomatik (Modifier-Ketten, ViewBuilder-Closures)
+# und erzeugen dreistellige Verstoßzahlen ohne Lesbarkeitsgewinn.
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - last_where
+  - operator_usage_whitespace
+  - redundant_nil_coalescing
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - yoda_condition
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+type_body_length:
+  warning: 400
+  error: 600
+
+file_length:
+  warning: 600
+  error: 900
+
+# Ein Datei-Header wird nicht erzwungen; erklärende Kommentare stehen bei der
+# Sache, nicht am Dateianfang.
