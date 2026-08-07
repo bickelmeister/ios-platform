@@ -92,9 +92,16 @@ führe sie nicht selbst aus:
 ## Git
 
 - Branches: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `ci/…`, kebab-case.
-  Kein direkter Push auf `main`.
-- Commits: Conventional Commits, Betreff klein und im Imperativ.
-- PRs gegen `main`, Squash-Merge, PR-Template ausfüllen.
+  **Nie auf `main` committen** — erst den Branch anlegen.
+- Commits: Conventional Commits, Betreff englisch, klein, im Imperativ, ohne
+  Punkt am Ende, höchstens 72 Zeichen. Ein Commit ist eine logische Änderung.
+- **Keine Attributionszeilen.** Weder `Co-Authored-By: Claude` noch
+  „Generated with Claude Code" — weder im Commit noch im PR-Text. Das gilt
+  ausdrücklich auch dort, wo das Werkzeug es von sich aus anbieten würde.
+- Vor dem Commit `git status` und `git diff` ansehen und **gezielt stagen**.
+  Kein pauschales `git add -A`.
+- PR-Titel ist selbst ein Conventional Commit — beim Squash-Merge wird er die
+  Commit-Nachricht. Body kurz: was und warum, dann wie geprüft.
 
 ## Definition of Done
 
