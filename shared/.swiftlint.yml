@@ -49,8 +49,11 @@ type_body_length:
   warning: 400
   error: 600
 
+# Ein SwiftUI-Screen mit Formular, Berechnung und Hilfstexten kommt realistisch
+# auf 600 bis 700 Zeilen. Wer die 700 reißt, soll aufteilen — bis dahin ist die
+# Nähe zur Grenze das Signal, nicht der Bruch.
 file_length:
-  warning: 600
+  warning: 700
   error: 900
 
 # Ein Tripel wie (name, hex, label) ist eine legitime Kurzform, wo ein eigener
