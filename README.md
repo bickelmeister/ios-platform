@@ -110,6 +110,16 @@ verschobenes `v1` darf nie einen roten CI-Lauf verursachen.
 7. Branch Protection auf `main` (nur bei public Repos kostenlos).
 8. Repo-Name in `scripts/sync.sh` in `REPOS` eintragen.
 
+> **Stolperstein:** Die Caller für `ios-release.yml` und `ios-trunk-tag.yml`
+> brauchen ein eigenes `permissions: contents: write`. Ein aufgerufener Workflow
+> kann nie *mehr* Rechte bekommen als sein Aufrufer — das `permissions` im
+> zentralen Workflow allein reicht also nicht, wenn die Repo-Voreinstellung auf
+> read-only steht. Nachsehen mit:
+>
+> ```sh
+> gh api /repos/bickelmeister/<repo>/actions/permissions/workflow
+> ```
+
 Die Signing- und Secret-Schritte stehen ausführlich in [docs/setup.md](docs/setup.md).
 
 Für neue Apps gibt es dafür `bickelmeister/ios-app-template` — dort ist das alles
