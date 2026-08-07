@@ -35,9 +35,6 @@ scripts/sync.sh        Verteilt shared/ und öffnet je einen PR
 # <app-repo>/.github/workflows/ci.yml
 name: CI
 on:
-  push:
-    branches: [main]
-    paths-ignore: ["**/*.md", "LICENSE"]
   pull_request:
     paths-ignore: ["**/*.md", "LICENSE"]
 concurrency:
@@ -54,6 +51,14 @@ jobs:
 
 Eine Änderung hier plus `v1`-Tag verschieben wirkt beim nächsten CI-Lauf in allen
 Repos — ohne dass ein App-Repo angefasst wird.
+
+> **CI läuft nur auf Pull Requests, nicht zusätzlich auf Pushes nach `main`.**
+> Die App-Repos sind privat: 2.000 Actions-Minuten im Monat, und macOS zählt
+> 10-fach — also rund 200 echte macOS-Minuten für alle Apps zusammen. Ein Lauf
+> auf `main` würde denselben Baum ein zweites Mal prüfen und das Kontingent
+> halbieren. Der Preis: bei Squash-Merge wird der Commit auf `main` selbst nie
+> gebaut, nur der PR-Stand davor. Wenn das eng wird, sind die Auswege ein
+> self-hosted Runner auf dem eigenen Mac oder ein Organization-Account.
 
 **Dateien werden verteilt**, weil man `.swiftlint.yml` oder ein Makefile nicht
 aufrufen kann:

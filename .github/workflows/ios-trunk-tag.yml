@@ -1,16 +1,29 @@
 name: Trunk-Tag
 
-# Setzt nach jedem grünen CI-Lauf auf main ein trunkVersion-Tag, damit jeder
-# Stand von main eine eindeutige, sortierbare Version hat — unabhängig von den
-# SemVer-Releases.
+# Setzt ein trunkVersion-Tag, damit jeder Stand von main eine eindeutige,
+# sortierbare Version hat — unabhängig von den SemVer-Releases.
 #
-# Aufruf im App-Repo (.github/workflows/trunk-tag.yml):
+# Läuft auf ubuntu (1-facher Minuten-Multiplikator) und braucht wenige Sekunden.
 #
-#   on:
-#     workflow_run:
-#       workflows: [CI]
-#       branches: [main]
-#       types: [completed]
+# Zwei Aufrufarten, je nachdem ob im App-Repo CI auf main läuft:
+#
+#   a) CI läuft auf main — an den CI-Lauf hängen, damit kein Tag auf einem
+#      kaputten Commit landet:
+#
+#      on:
+#        workflow_run:
+#          workflows: [CI]
+#          branches: [main]
+#          types: [completed]
+#
+#   b) CI läuft nur auf Pull Requests (spart macOS-Minuten) — direkt auf den
+#      Push nach main reagieren. Der Stand wurde dann im PR geprüft, nicht auf
+#      main selbst; bei Squash-Merge ist das derselbe Baum, solange nicht
+#      zwischendurch etwas anderes gelandet ist.
+#
+#      on:
+#        push:
+#          branches: [main]
 #
 #   jobs:
 #     tag:
@@ -22,15 +35,16 @@ on:
 jobs:
   tag:
     name: trunkVersion taggen
-    # Kein Tag auf einem kaputten Commit.
-    if: github.event.workflow_run.conclusion == 'success'
+    # Bei workflow_run kein Tag auf einem roten Lauf. Bei push gibt es nichts
+    # zu prüfen, die Bedingung ist dann immer wahr.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       # Offizielles Tool für das TrunkVer-Schema (https://trunkver.org):
       # {UTC-Zeitstempel}.0.0-g{Source-Ref}-{Build-Ref}, erkennt GitHub Actions
