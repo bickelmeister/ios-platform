@@ -30,13 +30,31 @@ platform :ios do
       api_key: api_key
     )
 
+    # Die Projekte stehen auf automatischem Signieren, damit die tägliche Arbeit
+    # in Xcode reibungslos läuft. Für den Archive-Lauf muss das umgestellt
+    # werden: Xcode würde sonst ein Development-Profil suchen, während match ein
+    # AppStore-Profil installiert hat — und auf dem Runner kann es nichts
+    # nachgenerieren. Die Werte kommen aus match, nicht aus dem Projekt, damit
+    # dieses Fastfile in allen Apps identisch bleibt und die project.pbxproj
+    # unangetastet bleibt.
+    mapping = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
+    app_identifier = mapping.keys.first
+    profile_name = mapping[app_identifier]
+    team_id = ENV.fetch("sigh_#{app_identifier}_appstore_team-id")
+
     build_app(
       project: project,
       scheme: scheme,
       configuration: "Release",
       export_method: "app-store",
       output_directory: "build",
-      clean: true
+      clean: true,
+      xcargs: [
+        "CODE_SIGN_STYLE=Manual",
+        "CODE_SIGN_IDENTITY='Apple Distribution'",
+        "PROVISIONING_PROFILE_SPECIFIER='#{profile_name}'",
+        "DEVELOPMENT_TEAM='#{team_id}'"
+      ].join(" ")
     )
 
     upload_to_testflight(
