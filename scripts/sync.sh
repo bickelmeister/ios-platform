@@ -16,7 +16,11 @@ PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$(dirname "$PLATFORM_DIR")"
 SHARED="$PLATFORM_DIR/shared"
 
-REPOS=(diaro-ios portio-ios fincheck-ios)
+# fincheck-ios fehlt hier bewusst: das Repo ist noch nicht auf die Plattform
+# umgestellt (keine Caller-Workflows, kein Makefile, kein match-Profil). Ein
+# Sync würde dort geteilte Dateien in ein Repo kippen, das nichts damit anfangen
+# kann. Nach der Migration wieder eintragen.
+REPOS=(diaro-ios portio-ios)
 BRANCH="chore/sync-ios-platform"
 
 APPLY=false
