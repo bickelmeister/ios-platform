@@ -122,8 +122,8 @@ verschobenes `v1` darf nie einen roten CI-Lauf verursachen.
 
 Die Signing- und Secret-Schritte stehen ausführlich in [docs/setup.md](docs/setup.md).
 
-Für neue Apps gibt es dafür `bickelmeister/ios-app-template` — dort ist das alles
-schon fertig.
+Als Vorlage dient `diaro-ios`: dort ist der Weg vollständig gegangen — drei
+Caller-Workflows, match-Signierung, Release bis TestFlight.
 
 ## Secrets
 
