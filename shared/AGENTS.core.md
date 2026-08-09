@@ -120,8 +120,8 @@ führe sie nicht selbst aus:
   `CURRENT_PROJECT_VERSION` hoch, committet auf `main`, verschiebt den Tag,
   archiviert, signiert über `match` und lädt nach TestFlight.
 - **In App Store Connect bleibt Handarbeit**: Build der Version zuweisen,
-  Release Notes prüfen, Screenshots, "Submit for Review". Ein Agent kann und
+  Release Notes schreiben, Screenshots, "Submit for Review". Ein Agent kann und
   soll das nicht abschließen.
-- App-Store-Metadaten liegen unter `fastlane/metadata/` und werden dort gepflegt,
-  nicht in App Store Connect direkt.
+- App-Store-Metadaten und Release Notes werden in App Store Connect gepflegt.
+  Es gibt kein `fastlane/metadata/` im Repo.
 - Rechtstexte, Screenshots und Review-Notes sind menschliche Entscheidungen.
