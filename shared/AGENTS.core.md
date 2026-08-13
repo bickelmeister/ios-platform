@@ -127,8 +127,11 @@ führe sie nicht selbst aus:
   laufen weitere Builds unter der bisherigen Version mit steigender
   Buildnummer weiter. Details: `docs/release.md` in `ios-platform`.
 - **In App Store Connect bleibt Handarbeit**: Build der Version zuweisen,
-  Release Notes schreiben, Screenshots, "Submit for Review". Ein Agent kann und
-  soll das nicht abschließen.
-- App-Store-Metadaten und Release Notes werden in App Store Connect gepflegt.
-  Es gibt kein `fastlane/metadata/` im Repo.
+  Screenshots, "Submit for Review". Ein Agent kann und soll das nicht
+  abschließen.
+- Die deutschen Release Notes liegen als Text in `fastlane/metadata/de-DE/
+  release_notes.txt` im jeweiligen App-Repo. `make release-notes` lädt sie per
+  Fastlane `deliver` zu App Store Connect hoch — bewusst nur der Text, kein
+  Screenshot-/Binary-Upload, keine Versionsänderung und **kein** "Submit for
+  Review". Das Einreichen bleibt weiterhin manuell in App Store Connect.
 - Rechtstexte, Screenshots und Review-Notes sind menschliche Entscheidungen.

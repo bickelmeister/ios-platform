@@ -25,7 +25,7 @@ XCB := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -derivedDataPath $(DERIV
 # genauso, nur geschwätziger.
 FORMATTER := $(shell command -v xcbeautify >/dev/null 2>&1 && echo "| xcbeautify" || echo "")
 
-.PHONY: help bootstrap lint format build test check verify clean bump-version
+.PHONY: help bootstrap lint format build test check verify clean bump-version release-notes
 
 help: ## Diese Übersicht
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -80,3 +80,6 @@ bump-version: ## Marketingversion setzen: make bump-version VERSION=1.2.0
 	git tag "v$(VERSION)"
 	git push origin "refs/tags/v$(VERSION)"
 	@echo "Tag v$(VERSION) gesetzt. Der nächste Nightly-Lauf baut damit die neue Marketingversion."
+
+release-notes: ## Deutsche Release Notes aus fastlane/metadata zu App Store Connect hochladen (kein Submit)
+	bundle exec fastlane release_notes

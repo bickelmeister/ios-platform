@@ -73,4 +73,28 @@ platform :ios do
       skip_submission: true
     )
   end
+
+  desc "Lädt die deutschen Release Notes zu App Store Connect hoch"
+  lane :release_notes do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_KEY"),
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    # Nur der Text aus fastlane/metadata hochladen — kein Screenshot-/Binary-
+    # Upload, keine Versionsänderung, und ausdrücklich kein Submit for Review.
+    # Das bleibt bewusst manuell in App Store Connect.
+    deliver(
+      api_key: api_key,
+      force: true,
+      skip_screenshots: true,
+      skip_binary_upload: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      metadata_path: "./fastlane/metadata"
+    )
+  end
 end
