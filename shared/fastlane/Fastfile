@@ -86,7 +86,10 @@ platform :ios do
 
     # Nur der Text aus fastlane/metadata hochladen — kein Screenshot-/Binary-
     # Upload, keine Versionsänderung, und ausdrücklich kein Submit for Review.
-    # Das bleibt bewusst manuell in App Store Connect.
+    # Das bleibt bewusst manuell in App Store Connect. precheck läuft trotz
+    # submit_for_review: false standardmäßig mit und scheitert am API-Key
+    # (kann In-App-Käufe nicht prüfen) — hier irrelevant, da wir eh nicht
+    # einreichen.
     deliver(
       api_key: api_key,
       force: true,
@@ -94,6 +97,7 @@ platform :ios do
       skip_binary_upload: true,
       skip_app_version_update: true,
       submit_for_review: false,
+      run_precheck_before_submit: false,
       metadata_path: "./fastlane/metadata"
     )
   end
