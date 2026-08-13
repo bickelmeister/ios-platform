@@ -33,11 +33,19 @@ on:
         type: string
         required: false
         default: macos-26
+      xcode-version:
+        description: "Xcode-Version für setup-xcode, z. B. 16.1 oder latest-stable"
+        type: string
+        required: false
+        default: latest-stable
       swiftlint-version:
         description: "SwiftLint-Release-Tag, oder 'latest'"
         type: string
         required: false
         default: latest
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -76,7 +84,7 @@ jobs:
       - name: Xcode auswählen
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: ${{ inputs.xcode-version }}
 
       - name: DerivedData cachen
         uses: actions/cache@v4

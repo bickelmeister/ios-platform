@@ -1,0 +1,183 @@
+name: iOS Nightly
+
+# Täglicher (bzw. per workflow_dispatch manuell ausgelöster) Check: hat main
+# sich seit dem letzten erfolgreichen TestFlight-Upload geändert? Wenn ja, wird
+# eine Build-Nummer race-frei reserviert, die aktuelle Marketingversion aus dem
+# nächstgelegenen vX.Y.Z-Tag gelesen und ios-release.yml für Archive, Signing
+# und Upload aufgerufen. Details zum Tag-Schema: docs/release.md.
+#
+# Aufruf im App-Repo (.github/workflows/nightly.yml):
+#
+#   on:
+#     schedule:
+#       - cron: '0 3 * * *'
+#     workflow_dispatch:
+#
+#   jobs:
+#     nightly:
+#       uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v1
+#       with:
+#         project: diaro-ios.xcodeproj
+#         scheme: diaro-ios
+#       secrets: inherit
+#
+# Schedule und workflow_dispatch müssen im App-Repo stehen: ein aufgerufener
+# Workflow (workflow_call) kann selbst keine eigenen Trigger wie schedule
+# definieren.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "Xcode-Projektdatei, z. B. diaro-ios.xcodeproj"
+        type: string
+        required: true
+      scheme:
+        description: "Zu archivierendes Scheme"
+        type: string
+        required: true
+      xcode-version:
+        type: string
+        required: false
+        default: latest-stable
+      runs-on:
+        type: string
+        required: false
+        default: macos-26
+      environment:
+        type: string
+        required: false
+        default: release
+    secrets:
+      ASC_KEY_ID:
+        required: true
+      ASC_ISSUER_ID:
+        required: true
+      ASC_KEY_P8:
+        required: true
+      MATCH_PASSWORD:
+        required: true
+      MATCH_GIT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+# Ein zweiter gleichzeitiger Nightly-Lauf (z. B. manuell während der geplanten
+# Zeit gestartet) darf main nicht doppelt begutachten, solange der erste noch
+# nicht fertig getaggt hat.
+concurrency:
+  group: ios-nightly-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Änderungen seit letztem Upload prüfen
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.check.outputs.should_build }}
+      head-sha: ${{ steps.check.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: main gegen testflight-last vergleichen
+        id: check
+        run: |
+          set -euo pipefail
+          head_sha=$(git rev-parse HEAD)
+          last_sha=$(git rev-list -n1 testflight-last 2>/dev/null || true)
+
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$last_sha" == "$head_sha" ]]; then
+            echo "main unverändert seit dem letzten erfolgreichen Upload (${head_sha}) — kein Build nötig."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main hat sich geändert (zuletzt hochgeladen: ${last_sha:-noch nie}, jetzt: ${head_sha})."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  reserve:
+    name: Build-Nummer reservieren
+    needs: check
+    if: needs.check.outputs.should-build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      build-number: ${{ steps.reserve.outputs.build_number }}
+      marketing-version: ${{ steps.mv.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Atomarer Zähler ohne externen Lock-Service: das Erstellen eines schon
+      # vorhandenen Tags lehnt Git serverseitig ab, zwei parallele Läufe können
+      # also nie dieselbe Nummer gewinnen. Fehlgeschlagene Reservierungen
+      # bleiben als Tag stehen und werden nie wiederverwendet — nur
+      # testflight-last markiert, welcher Build tatsächlich hochgeladen wurde.
+      - name: Nächste Build-Nummer atomar reservieren
+        id: reserve
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            last=$(git tag -l 'build/[0-9]*' | sed 's#build/##' | sort -n | tail -1)
+            next=$(( ${last:-0} + 1 ))
+            if git push origin "HEAD:refs/tags/build/${next}" 2>/dev/null; then
+              echo "Build-Nummer ${next} reserviert (Versuch ${attempt}/20)."
+              echo "build_number=${next}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "build/${next} war schon vergeben (Versuch ${attempt}/20), nächster Versuch…"
+            git fetch --tags --force origin
+          done
+          echo "::error::Konnte nach 20 Versuchen keine Build-Nummer reservieren."
+          exit 1
+
+      - name: Marketingversion aus nächstgelegenem vX.Y.Z-Tag lesen
+        id: mv
+        run: |
+          set -euo pipefail
+          tag=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0) || {
+            echo "::error::Kein vX.Y.Z-Tag in der Historie gefunden. Einmalig setzen mit: make bump-version VERSION=1.0.0"
+            exit 1
+          }
+          echo "Marketingversion: ${tag#v} (Tag ${tag})"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Archive & TestFlight
+    needs: [check, reserve]
+    uses: ./.github/workflows/ios-release.yml
+    with:
+      project: ${{ inputs.project }}
+      scheme: ${{ inputs.scheme }}
+      marketing-version: ${{ needs.reserve.outputs.marketing-version }}
+      build-number: ${{ needs.reserve.outputs.build-number }}
+      xcode-version: ${{ inputs.xcode-version }}
+      runs-on: ${{ inputs.runs-on }}
+      environment: ${{ inputs.environment }}
+    secrets: inherit
+
+  mark-success:
+    name: testflight-last setzen
+    needs: [check, reserve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Erfolgs-Marker auf diesen Commit verschieben
+        env:
+          HEAD_SHA: ${{ needs.check.outputs.head-sha }}
+        run: |
+          set -euo pipefail
+          git tag -f testflight-last "$HEAD_SHA"
+          git push --force origin refs/tags/testflight-last
+          echo "testflight-last -> ${HEAD_SHA} (Build ${{ needs.reserve.outputs.build-number }}, Version ${{ needs.reserve.outputs.marketing-version }})"
