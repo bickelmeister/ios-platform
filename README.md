@@ -18,6 +18,7 @@ Agentenregeln. Die App-Repos enthalten davon so wenig wie möglich, damit eine
   ios-ci.yml           SwiftLint (ubuntu) → Build & Test (macOS)
   ios-nightly.yml      Täglicher Check: main seit letztem Upload geändert? → baut ios-release.yml
   ios-release.yml      Archive, Signieren, TestFlight-Upload (reiner Build-Baustein)
+  ios-release-notes.yml Deutsche Release Notes zu App Store Connect hochladen (manuell)
   ios-trunk-tag.yml    trunkVersion-Tag nach grünem CI auf main
 shared/                Dateien, die per Sync in die App-Repos wandern
   .swiftlint.yml

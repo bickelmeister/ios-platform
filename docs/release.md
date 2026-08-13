@@ -101,3 +101,27 @@ Die deutschen Release Notes sind die Ausnahme: `make release-notes` lädt den
 Text aus `fastlane/metadata/de-DE/release_notes.txt` per Fastlane `deliver`
 hoch (`skip_screenshots`, `skip_binary_upload`, `skip_app_version_update`,
 `submit_for_review: false`) — nur der Text, kein Einreichen.
+
+## Release Notes ohne lokale Secrets hochladen
+
+`make release-notes` braucht lokal die drei `APP_STORE_CONNECT_API_KEY_*`
+Umgebungsvariablen mit demselben API-Key, der auch für den Nightly-Upload
+verwendet wird — die liegen nicht in jedem Laptop-Environment. Alternative:
+`ios-release-notes.yml` macht denselben `fastlane release_notes`-Aufruf als
+manuell auslösbaren Workflow, der die schon im Environment `release` liegenden
+Secrets wiederverwendet. Kein Xcode-Archiv, läuft auf ubuntu.
+
+```yaml
+# .github/workflows/release-notes.yml
+name: Release Notes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-notes:
+    uses: bickelmeister/ios-platform/.github/workflows/ios-release-notes.yml@v2
+    secrets: inherit
+```
+
+Auslösen über **Actions → Release Notes → Run workflow** im App-Repo.
