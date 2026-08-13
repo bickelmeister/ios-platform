@@ -94,5 +94,10 @@ bisherigen Marketingversion mit steigenden Buildnummern weiter.
 ## App Store Connect bleibt Handarbeit
 
 Der Nightly-Workflow lädt nur zu TestFlight hoch (`skip_submission: true`).
-Build einer Version zuweisen, Release Notes, Screenshots und "Submit for
-Review" passieren weiterhin manuell in App Store Connect.
+Build einer Version zuweisen, Screenshots und "Submit for Review" passieren
+weiterhin manuell in App Store Connect.
+
+Die deutschen Release Notes sind die Ausnahme: `make release-notes` lädt den
+Text aus `fastlane/metadata/de-DE/release_notes.txt` per Fastlane `deliver`
+hoch (`skip_screenshots`, `skip_binary_upload`, `skip_app_version_update`,
+`submit_for_review: false`) — nur der Text, kein Einreichen.
