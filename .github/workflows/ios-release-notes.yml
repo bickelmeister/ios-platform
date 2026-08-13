@@ -1,0 +1,96 @@
+name: iOS Release Notes
+
+# Wiederverwendbarer Baustein: lädt die lokalisierten Release Notes aus
+# fastlane/metadata/<locale>/release_notes.txt zu App Store Connect hoch
+# (fastlane deliver — nur der Text, kein Screenshot-/Binary-Upload, keine
+# Versionsänderung, kein Submit for Review). Kein Xcode-Archiv nötig, läuft
+# deshalb auf ubuntu statt macOS.
+#
+# Aufruf im App-Repo (.github/workflows/release-notes.yml):
+#
+#   on:
+#     workflow_dispatch:
+#
+#   jobs:
+#     release-notes:
+#       uses: bickelmeister/ios-platform/.github/workflows/ios-release-notes.yml@v2
+#       secrets: inherit
+#
+# Rein manuell ausgelöst — kein schedule, kein Trigger auf main. Details:
+# docs/release.md.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        type: string
+        required: false
+        default: ubuntu-latest
+      environment:
+        description: "GitHub Environment mit den ASC-Secrets"
+        type: string
+        required: false
+        default: release
+    secrets:
+      ASC_KEY_ID:
+        description: "App Store Connect API Key ID"
+        required: true
+      ASC_ISSUER_ID:
+        description: "App Store Connect Issuer ID"
+        required: true
+      ASC_KEY_P8:
+        description: "Base64-kodierter Inhalt der .p8-Datei"
+        required: true
+
+permissions:
+  contents: read
+
+# Zwei gleichzeitige Uploads für dasselbe Repo würden sich in App Store
+# Connect gegenseitig überschreiben.
+concurrency:
+  group: ios-release-notes-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Release Notes hochladen
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ohne diese Prüfung stirbt fastlane erst tief im deliver-Aufruf an
+      # einem kryptischen Auth-Fehler, der nicht verrät, dass schlicht das
+      # Secret nicht stimmt.
+      - name: Secret vorab prüfen
+        env:
+          KEY_B64: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEY_B64" ]]; then
+            echo "::error::ASC_KEY_P8 ist leer."
+            exit 1
+          fi
+          if ! header=$(printf '%s' "$KEY_B64" | base64 --decode 2>/dev/null | head -1); then
+            echo "::error::ASC_KEY_P8 ist kein gültiges base64. Erzeugen mit: base64 -i AuthKey_XXXX.p8 | gh secret set ASC_KEY_P8"
+            exit 1
+          fi
+          if [[ "$header" != *"BEGIN PRIVATE KEY"* ]]; then
+            echo "::error::ASC_KEY_P8 dekodiert nicht zu einem PEM-Schlüssel (erwartet '-----BEGIN PRIVATE KEY-----')."
+            exit 1
+          fi
+
+      - name: Ruby und fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Release Notes hochladen
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.ASC_KEY_P8 }}
+          FASTLANE_SKIP_UPDATE_CHECK: "true"
+          CI: "true"
+        run: bundle exec fastlane release_notes
