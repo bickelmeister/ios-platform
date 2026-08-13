@@ -16,7 +16,8 @@ Agentenregeln. Die App-Repos enthalten davon so wenig wie möglich, damit eine
 ```
 .github/workflows/     Wiederverwendbare Workflows (workflow_call)
   ios-ci.yml           SwiftLint (ubuntu) → Build & Test (macOS)
-  ios-release.yml      Version setzen, Archive, Signieren, TestFlight
+  ios-nightly.yml      Täglicher Check: main seit letztem Upload geändert? → baut ios-release.yml
+  ios-release.yml      Archive, Signieren, TestFlight-Upload (reiner Build-Baustein)
   ios-trunk-tag.yml    trunkVersion-Tag nach grünem CI auf main
 shared/                Dateien, die per Sync in die App-Repos wandern
   .swiftlint.yml
@@ -60,6 +61,29 @@ Repos — ohne dass ein App-Repo angefasst wird.
 > gebaut, nur der PR-Stand davor. Wenn das eng wird, sind die Auswege ein
 > self-hosted Runner auf dem eigenen Mac oder ein Organization-Account.
 
+Der Nightly-Release-Lauf braucht Schreibrechte, um seine Tags zu setzen (siehe
+"Stolperstein" unten):
+
+```yaml
+# <app-repo>/.github/workflows/nightly.yml
+name: Nightly
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  nightly:
+    uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v1
+    with:
+      project: diaro-ios.xcodeproj
+      scheme: diaro-ios
+    secrets: inherit
+```
+
+Details zum Tag-Schema, Ablauf und Troubleshooting: [docs/release.md](docs/release.md).
+
 **Dateien werden verteilt**, weil man `.swiftlint.yml` oder ein Makefile nicht
 aufrufen kann:
 
@@ -102,15 +126,18 @@ verschobenes `v1` darf nie einen roten CI-Lauf verursachen.
 3. `AGENTS.md` anlegen: repo-spezifischer Teil plus `AGENTS.core.md` zwischen den
    SYNC-Markern. `CLAUDE.md` als Symlink darauf:
    `ln -s AGENTS.md CLAUDE.md && git add CLAUDE.md`
-4. Caller-Workflows für `ios-ci.yml`, `ios-trunk-tag.yml`, `ios-release.yml` anlegen.
+4. Caller-Workflows für `ios-ci.yml`, `ios-trunk-tag.yml`, `ios-nightly.yml` anlegen.
 5. `fastlane/` mit `Appfile`, `Fastfile`, `Matchfile` anlegen; `match appstore`
    für die Bundle-ID laufen lassen.
-6. Repo-Secrets setzen: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`,
-   `MATCH_PASSWORD`, `MATCH_GIT_TOKEN`.
+6. GitHub Environment `release` anlegen (Settings → Environments), darin die
+   fünf Secrets setzen: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`,
+   `MATCH_PASSWORD`, `MATCH_GIT_TOKEN`. Optional Protection Rules (z. B.
+   Required Reviewers) für den Upload-Job aktivieren.
 7. Branch Protection auf `main` (nur bei public Repos kostenlos).
-8. Repo-Name in `scripts/sync.sh` in `REPOS` eintragen.
+8. Ersten Marketingversion-Tag setzen: `make bump-version VERSION=1.0.0`.
+9. Repo-Name in `scripts/sync.sh` in `REPOS` eintragen.
 
-> **Stolperstein:** Die Caller für `ios-release.yml` und `ios-trunk-tag.yml`
+> **Stolperstein:** Die Caller für `ios-nightly.yml` und `ios-trunk-tag.yml`
 > brauchen ein eigenes `permissions: contents: write`. Ein aufgerufener Workflow
 > kann nie *mehr* Rechte bekommen als sein Aufrufer — das `permissions` im
 > zentralen Workflow allein reicht also nicht, wenn die Repo-Voreinstellung auf
@@ -126,6 +153,10 @@ Als Vorlage dient `diaro-ios`: dort ist der Weg vollständig gegangen — drei
 Caller-Workflows, match-Signierung, Release bis TestFlight.
 
 ## Secrets
+
+Liegen im GitHub Environment `release` des jeweiligen App-Repos, nicht als
+einfache Repo-Secrets — nur so lassen sich Protection Rules (z. B. Required
+Reviewers) auf den Upload-Job anwenden.
 
 | Name | Woher |
 | --- | --- |

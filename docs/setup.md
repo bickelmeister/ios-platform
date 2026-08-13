@@ -159,11 +159,23 @@ done
 
 ## Schritt 5 — Erster Release-Lauf
 
+Secrets liegen im GitHub Environment `release`, nicht als Repo-Secrets — dieses
+Environment im App-Repo zuerst anlegen (Settings → Environments → New
+environment → `release`), dann Schritt 4 dort statt in den Repo-Secrets
+ausführen.
+
+Danach einmalig den ersten Marketingversion-Tag setzen:
+
 ```sh
-make release VERSION=0.0.2
+make bump-version VERSION=0.0.2
 ```
 
-Dann in **Actions** zusehen. Häufige Fehlschläge beim ersten Mal:
+Und den Nightly-Workflow manuell anstoßen, statt bis zum nächsten geplanten
+Lauf zu warten: **Actions → Nightly → Run workflow**. Der komplette Ablauf
+(Tag-Schema, Buildnummer-Reservierung, `testflight-last`) steht in
+[docs/release.md](release.md).
+
+Häufige Fehlschläge beim ersten Mal:
 
 | Meldung | Ursache |
 | --- | --- |
@@ -171,4 +183,5 @@ Dann in **Actions** zusehen. Häufige Fehlschläge beim ersten Mal:
 | `Authentication credentials are missing or invalid` | `MATCH_GIT_TOKEN` ist der rohe Token statt base64 von `user:token`, oder mit Zeilenumbruch |
 | `No profile for team … matching … found` | `match appstore` wurde für diese Bundle-ID noch nicht gelaufen |
 | `Invalid curve name` / p8 unlesbar | `ASC_KEY_P8` ist nicht base64, oder beim Kopieren umgebrochen |
-| `The provided entity includes an attribute with a value that has already been used` | Diese Build-Nummer gibt es in ASC schon — Release löschen, neu anlegen, die CI zählt dann weiter hoch |
+| `Kein vX.Y.Z-Tag in der Historie gefunden` | `make bump-version VERSION=0.0.2` wurde noch nicht ausgeführt |
+| `The provided entity includes an attribute with a value that has already been used` | Sollte durch die atomare Buildnummer-Reservierung nicht mehr vorkommen; falls doch, wurde die App vorher schon manuell mit dieser Nummer bespielt — der nächste Nightly-Lauf zählt automatisch weiter |

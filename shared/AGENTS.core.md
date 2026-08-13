@@ -77,8 +77,10 @@ tracken. Das ist kein Marketing, sondern eine Randbedingung des Codes.
 Diese Dinge haben Konsequenzen außerhalb des Repos. Schlag die Änderung vor,
 führe sie nicht selbst aus:
 
-- `*.xcodeproj/project.pbxproj` — Versionsfelder setzt ausschließlich die CI.
-  Neue Quelldateien brauchen dank Synced Folders ohnehin keine pbxproj-Änderung.
+- `*.xcodeproj/project.pbxproj` — `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION`
+  werden nirgends committet, auch nicht von der CI: der Nightly-Workflow
+  injiziert sie nur als Build-Parameter. Neue Quelldateien brauchen dank
+  Synced Folders ohnehin keine pbxproj-Änderung.
 - `PRODUCT_BUNDLE_IDENTIFIER`, `DEVELOPMENT_TEAM`, Signing-Einstellungen
 - `*.entitlements`
 - `PrivacyInfo.xcprivacy` (ergänzen ja, ausdünnen nein)
@@ -114,11 +116,16 @@ führe sie nicht selbst aus:
 
 ## Release (Apple)
 
-- **Version niemals von Hand im pbxproj ändern.** Das macht die CI.
-- Release auslösen: `make release VERSION=1.2.0`. Das legt ein GitHub Release
-  mit Tag `v1.2.0` an; der zentrale Workflow setzt `MARKETING_VERSION`, zählt
-  `CURRENT_PROJECT_VERSION` hoch, committet auf `main`, verschiebt den Tag,
-  archiviert, signiert über `match` und lädt nach TestFlight.
+- **Version niemals von Hand im pbxproj ändern.** Sie wird nirgends committet,
+  auch nicht von der CI — nur beim Build als Parameter gesetzt.
+- Releases laufen automatisch: ein täglicher Nightly-Workflow prüft, ob `main`
+  sich seit dem letzten erfolgreichen TestFlight-Upload geändert hat, zählt bei
+  Bedarf die Buildnummer hoch, archiviert, signiert über `match` und lädt nach
+  TestFlight. Manuell auslösbar über **Actions → Nightly → Run workflow**.
+- Marketingversion hochziehen: `make bump-version VERSION=1.2.0`. Setzt nur
+  einen Git-Tag — der nächste Nightly-Lauf übernimmt ihn automatisch. Bis dahin
+  laufen weitere Builds unter der bisherigen Version mit steigender
+  Buildnummer weiter. Details: `docs/release.md` in `ios-platform`.
 - **In App Store Connect bleibt Handarbeit**: Build der Version zuweisen,
   Release Notes schreiben, Screenshots, "Submit for Review". Ein Agent kann und
   soll das nicht abschließen.

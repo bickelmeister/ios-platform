@@ -1,10 +1,14 @@
 name: iOS Release
 
-# Wiederverwendbarer Release-Lauf: setzt die Version im Xcode-Projekt, committet
-# sie auf main, verschiebt den Release-Tag auf diesen Commit und lädt den Build
-# nach TestFlight. "Submit for Review" bleibt Handarbeit in App Store Connect.
+# Wiederverwendbarer Build-&-Upload-Baustein: archiviert, signiert (über match)
+# und lädt zu TestFlight hoch. Setzt oder committet keine Version — Marketing-
+# version und Build-Nummer kommen als fertige Werte vom Aufrufer (normalerweise
+# ios-nightly.yml) und werden nur als Build-Parameter injiziert
+# (MARKETING_VERSION / CURRENT_PROJECT_VERSION), nicht in project.pbxproj
+# geschrieben. Dadurch bleibt main frei von automatisierten Commits außerhalb
+# von Pull Requests.
 #
-# Aufruf im App-Repo (.github/workflows/release.yml):
+# Direkter Aufruf (z. B. für einen manuellen Ad-hoc-Build) im App-Repo:
 #
 #   jobs:
 #     release:
@@ -12,10 +16,12 @@ name: iOS Release
 #       with:
 #         project: diaro-ios.xcodeproj
 #         scheme: diaro-ios
+#         marketing-version: "1.4.0"
+#         build-number: "42"
 #       secrets: inherit
 #
-# Annahme: Releases werden aus `main` geschnitten. Der Versions-Commit wird auf
-# den aktuellen `main` gesetzt und der Tag dorthin verschoben.
+# In der Praxis ruft ios-nightly.yml diesen Workflow auf und übergibt
+# Marketingversion und Build-Nummer automatisch. Details: docs/release.md.
 
 on:
   workflow_call:
@@ -28,10 +34,28 @@ on:
         description: "Zu archivierendes Scheme"
         type: string
         required: true
+      marketing-version:
+        description: "CFBundleShortVersionString, z. B. 1.4.0"
+        type: string
+        required: true
+      build-number:
+        description: "CFBundleVersion, rein numerisch, z. B. 42"
+        type: string
+        required: true
+      xcode-version:
+        description: "Xcode-Version für setup-xcode, z. B. 16.1 oder latest-stable"
+        type: string
+        required: false
+        default: latest-stable
       runs-on:
         type: string
         required: false
         default: macos-26
+      environment:
+        description: "GitHub Environment mit den Secrets/Protection Rules für diesen Upload"
+        type: string
+        required: false
+        default: release
     secrets:
       ASC_KEY_ID:
         description: "App Store Connect API Key ID"
@@ -49,98 +73,37 @@ on:
         description: "PAT mit Lesezugriff auf bickelmeister/ios-certificates"
         required: true
 
-# Zwei gleichzeitige Releases dürfen sich nicht gegenseitig die Tags verschieben.
+permissions:
+  contents: read
+
+# Zwei gleichzeitige Uploads für dasselbe Projekt dürfen sich nicht in die Quere
+# kommen (match/Keychain, TestFlight-Build-Nummern).
 concurrency:
-  group: ios-release-${{ github.repository }}
+  group: ios-release-${{ github.repository }}-${{ inputs.project }}
   cancel-in-progress: false
 
 jobs:
-  version:
-    name: Version setzen
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
-      build: ${{ steps.bump.outputs.build }}
-      sha: ${{ steps.commit.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: SemVer aus dem Release-Tag lesen
-        id: ver
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name }}"
-          version="${tag#v}"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '$tag' ist keine SemVer (erwartet z. B. v1.2.0)."
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: MARKETING_VERSION setzen und Build-Nummer erhöhen
-        id: bump
-        env:
-          PBXPROJ: ${{ inputs.project }}/project.pbxproj
-        run: |
-          set -euo pipefail
-          version="${{ steps.ver.outputs.version }}"
-
-          current_build=$(grep -m1 -oE 'CURRENT_PROJECT_VERSION = [0-9]+;' "$PBXPROJ" | grep -oE '[0-9]+' || true)
-          if [[ -z "$current_build" ]]; then
-            echo "::error::CURRENT_PROJECT_VERSION nicht in $PBXPROJ gefunden."
-            exit 1
-          fi
-          new_build=$((current_build + 1))
-
-          # Debug- und Release-Konfiguration tragen die Werte beide, daher /g.
-          sed -i -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${version};/g" "$PBXPROJ"
-          sed -i -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${new_build};/g" "$PBXPROJ"
-
-          if git diff --quiet -- "$PBXPROJ"; then
-            echo "::error::Keine Änderung an $PBXPROJ — Muster nicht gefunden (Xcode-Formatwechsel?)."
-            exit 1
-          fi
-
-          echo "Version -> ${version}, Build ${current_build} -> ${new_build}"
-          echo "build=${new_build}" >> "$GITHUB_OUTPUT"
-
-      - name: Committen, pushen, Tag verschieben
-        id: commit
-        env:
-          PBXPROJ: ${{ inputs.project }}/project.pbxproj
-        run: |
-          set -euo pipefail
-          tag="${{ steps.ver.outputs.tag }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$PBXPROJ"
-          git commit -m "chore(release): set version ${{ steps.ver.outputs.version }} (build ${{ steps.bump.outputs.build }})"
-          git push origin HEAD:main
-          # Den Release-Tag auf den Commit mit der eingebackenen Version zeigen
-          # lassen, damit ein Checkout des Tags archivierbare Quellen ergibt.
-          git tag -f "$tag"
-          git push --force origin "refs/tags/${tag}"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
   upload:
     name: Archive & TestFlight
-    needs: version
     runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.version.outputs.sha }}
+
+      - name: Buildnummer validieren
+        env:
+          BUILD_NUMBER: ${{ inputs.build-number }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::build-number muss rein numerisch sein, war '${BUILD_NUMBER}'."
+            exit 1
+          fi
 
       - name: Xcode auswählen
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: ${{ inputs.xcode-version }}
 
       # Ohne diese Prüfung stirbt fastlane erst im Archive-Job an einem
       # OpenSSL-Stacktrace ("invalid curve name"), der nicht verrät, dass
@@ -183,6 +146,8 @@ jobs:
         env:
           SCHEME: ${{ inputs.scheme }}
           PROJECT: ${{ inputs.project }}
+          MARKETING_VERSION: ${{ inputs.marketing-version }}
+          BUILD_NUMBER: ${{ inputs.build-number }}
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.ASC_KEY_P8 }}
@@ -193,3 +158,17 @@ jobs:
           FASTLANE_SKIP_UPDATE_CHECK: "true"
           CI: "true"
         run: bundle exec fastlane release
+
+      # Nachvollziehbarkeit: welches Binary wurde für welche Build-Nummer
+      # tatsächlich hochgeladen. dSYMs werden für die Crash-Symbolisierung im
+      # Xcode Organizer gebraucht.
+      - name: Build-Artefakte hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.scheme }}-build-${{ inputs.build-number }}
+          path: |
+            build/*.ipa
+            build/*.dSYM.zip
+          retention-days: 90
+          if-no-files-found: warn
