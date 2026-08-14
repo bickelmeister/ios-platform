@@ -53,22 +53,26 @@ von automatisierten Commits außerhalb von Pull Requests.
 name: Nightly
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
+  # Vorerst nur manuell ausgelöst (Actions → Nightly → Run workflow), um
+  # macOS-Minuten im Free Tier zu sparen (macOS zählt 10-fach). Sobald das
+  # Kontingent wieder Luft hat, `schedule:` ergänzen:
+  #
+  #   schedule:
+  #     - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
   nightly:
-    uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v1
+    uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v2
     with:
       project: diaro-ios.xcodeproj
       scheme: diaro-ios
     secrets: inherit
 ```
 
-`workflow_dispatch` erlaubt einen manuellen Testlauf jederzeit, unabhängig vom
-Zeitplan — z. B. nach dem Setzen eines neuen `vX.Y.Z`-Tags, wenn der Build
-nicht bis zum nächsten Nightly-Fenster warten soll.
+Ohne `schedule` muss der Build manuell ausgelöst werden — der `check`-Job
+(Vergleich mit `testflight-last`) verhindert aber wie beim geplanten Lauf
+unnötige Builds, falls sich seit dem letzten Upload nichts geändert hat.
 
 ## Marketingversion hochziehen
 

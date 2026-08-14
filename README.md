@@ -38,13 +38,14 @@ scripts/sync.sh        Verteilt shared/ und öffnet je einen PR
 name: CI
 on:
   pull_request:
-    paths-ignore: ["**/*.md", "LICENSE"]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["**/*.md", "LICENSE", "docs/**", "fastlane/metadata/**"]
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   ci:
-    uses: bickelmeister/ios-platform/.github/workflows/ios-ci.yml@v1
+    uses: bickelmeister/ios-platform/.github/workflows/ios-ci.yml@v2
     with:
       project: diaro-ios.xcodeproj
       scheme: diaro-ios
@@ -61,6 +62,14 @@ Repos — ohne dass ein App-Repo angefasst wird.
 > halbieren. Der Preis: bei Squash-Merge wird der Commit auf `main` selbst nie
 > gebaut, nur der PR-Stand davor. Wenn das eng wird, sind die Auswege ein
 > self-hosted Runner auf dem eigenen Mac oder ein Organization-Account.
+>
+> Drei weitere, bereits eingebaute Sparmaßnahmen: `concurrency.cancel-in-progress`
+> bricht überholte Läufe ab, sobald erneut in denselben PR-Branch gepusht wird
+> — sonst zählt jeder Zwischenstand voll mit. `paths-ignore` verhindert CI-Läufe
+> bei reinen Doku-/Metadata-Änderungen. `ios-ci.yml` selbst überspringt
+> Draft-PRs (`ios-ci.yml`, `if` auf dem `lint`-Job) — dafür braucht der Trigger
+> oben zwingend `ready_for_review` in `types`, sonst läuft CI nie an, wenn ein
+> Draft als bereit markiert wird.
 
 Der Nightly-Release-Lauf braucht Schreibrechte, um seine Tags zu setzen (siehe
 "Stolperstein" unten):
@@ -69,14 +78,15 @@ Der Nightly-Release-Lauf braucht Schreibrechte, um seine Tags zu setzen (siehe
 # <app-repo>/.github/workflows/nightly.yml
 name: Nightly
 on:
-  schedule:
-    - cron: '0 3 * * *'
+  # Vorerst nur manuell (Actions → Nightly → Run workflow), um macOS-Minuten
+  # zu sparen. `schedule:` kann jederzeit wieder ergänzt werden, siehe
+  # docs/release.md.
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
   nightly:
-    uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v1
+    uses: bickelmeister/ios-platform/.github/workflows/ios-nightly.yml@v2
     with:
       project: diaro-ios.xcodeproj
       scheme: diaro-ios
@@ -108,7 +118,7 @@ Fehlen die Marker, lässt `sync.sh` die Datei in Ruhe.
 
 ## Versionierung
 
-Die App-Repos zeigen auf `@v1`. Nach einer Änderung:
+Die App-Repos zeigen auf `@v2`. Nach einer Änderung:
 
 ```sh
 git tag -f v1 && git push --force origin refs/tags/v1
